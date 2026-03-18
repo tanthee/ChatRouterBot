@@ -1,4 +1,5 @@
 import os
+import logging
 import discord
 from discord.ext import commands
 from openai import OpenAI
@@ -9,6 +10,16 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_KEY = os.getenv("OPENAI_KEY")
 BASE_CHANNEL_ID = int(os.getenv("BASE_CHANNEL_ID"))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("log/bot.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -37,6 +48,8 @@ def determineTargetChannel(message: discord.Message, channels: list[discord.Text
 ## 出力形式:
 最も適切なチャンネルのIDのみを出力してください。数字のみで回答してください。"""
 
+    logger.info(f"Routing request - Author: {message.author}, Content preview: {message.content[:50]}...")
+
     response = openaiClient.chat.completions.create(
         model="gpt-5.4-nano",
         messages=[{"role": "user", "content": prompt}],
@@ -45,22 +58,25 @@ def determineTargetChannel(message: discord.Message, channels: list[discord.Text
     )
 
     channelIdStr = response.choices[0].message.content.strip()
+    logger.info(f"AI response - Channel ID: {channelIdStr}")
     
     try:
         channelId = int(channelIdStr)
         for channel in channels:
             if channel.id == channelId:
+                logger.info(f"Target channel found: {channel.name} (ID: {channel.id})")
                 return channel
     except ValueError:
-        pass
+        logger.warning(f"Invalid channel ID returned: {channelIdStr}")
 
     return None
 
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    print("------")
+    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    logger.info(f"Base channel ID: {BASE_CHANNEL_ID}")
+    logger.info("------")
 
 
 @bot.event
@@ -75,24 +91,34 @@ async def on_message(message: discord.Message):
     if not guild:
         return
 
+    logger.info(f"Message received - Author: {message.author}, Channel: {message.channel.name}")
+    logger.info(f"Message content: {message.content[:100]}{'...' if len(message.content) > 100 else ''}")
+
     textChannels = [ch for ch in guild.text_channels if ch.id != BASE_CHANNEL_ID]
+    logger.info(f"Available channels for routing: {len(textChannels)}")
 
     if not textChannels:
+        logger.error("No target channels available")
         await message.reply("転送先のチャンネルが見つかりませんでした。")
         return
 
     targetChannel = determineTargetChannel(message, textChannels)
 
     if not targetChannel:
+        logger.error("Failed to determine target channel")
         await message.reply("適切な転送先チャンネルを特定できませんでした。")
         return
 
     try:
         forwardedMessage = await message.forward(targetChannel)
+        logger.info(f"Message forwarded successfully - From: {message.channel.name} To: {targetChannel.name}")
+        logger.info(f"Forwarded message URL: {forwardedMessage.jump_url}")
         await message.reply(f"メッセージを転送しました: {forwardedMessage.jump_url}")
     except discord.Forbidden:
+        logger.error(f"Permission denied for channel: {targetChannel.name}")
         await message.reply(f"チャンネル「{targetChannel.name}」への転送権限がありません。")
     except Exception as e:
+        logger.error(f"Error during forwarding: {str(e)}", exc_info=True)
         await message.reply(f"転送中にエラーが発生しました: {str(e)}")
 
 
