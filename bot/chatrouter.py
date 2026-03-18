@@ -40,7 +40,7 @@ def determineTargetChannel(message: discord.Message, channels: list[discord.Text
     response = openaiClient.chat.completions.create(
         model="gpt-5.4-nano",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=50,
+        max_completion_tokens=50,
         temperature=0.3
     )
 
@@ -87,15 +87,9 @@ async def on_message(message: discord.Message):
         await message.reply("適切な転送先チャンネルを特定できませんでした。")
         return
 
-    files = []
-    for attachment in message.attachments:
-        file = await attachment.to_file()
-        files.append(file)
-
     try:
-        forwardedMessage = await targetChannel.send(content=message.content, files=files if files else None)
-        jumpUrl = forwardedMessage.jump_url
-        await message.reply(f"メッセージを転送しました: {jumpUrl}")
+        forwardedMessage = await message.forward(targetChannel)
+        await message.reply(f"メッセージを転送しました: {forwardedMessage.jump_url}")
     except discord.Forbidden:
         await message.reply(f"チャンネル「{targetChannel.name}」への転送権限がありません。")
     except Exception as e:
