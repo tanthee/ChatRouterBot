@@ -28,6 +28,8 @@ intents.guilds = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 openaiClient = OpenAI(api_key=OPENAI_KEY)
 
+EXCLUDED_CATEGORIES = ["事務", "アーカイブ"]
+
 
 def determineTargetChannel(message: discord.Message, channels: list[discord.TextChannel]) -> discord.TextChannel | None:
     channelInfo = "\n".join([f"- ID: {ch.id}, Name: {ch.name}, Topic: {ch.topic or 'なし'}" for ch in channels])
@@ -94,7 +96,11 @@ async def on_message(message: discord.Message):
     logger.info(f"Message received - Author: {message.author}, Channel: {message.channel.name}")
     logger.info(f"Message content: {message.content[:100]}{'...' if len(message.content) > 100 else ''}")
 
-    textChannels = [ch for ch in guild.text_channels if ch.id != BASE_CHANNEL_ID]
+    textChannels = [
+        ch for ch in guild.text_channels 
+        if ch.id != BASE_CHANNEL_ID 
+        and (ch.category is None or ch.category.name not in EXCLUDED_CATEGORIES)
+    ]
     logger.info(f"Available channels for routing: {len(textChannels)}")
 
     if not textChannels:
